@@ -102,41 +102,108 @@ function parseOSVWorkbook(wb){
   return data;
 }
 
+function isValidSupplierName(value){
+  const raw = String(value ?? '').trim();
+  const n = normalize(raw);
+  if (!raw || raw.length < 3) return false;
+  if (/^[\d\s.,\-/]+$/.test(raw)) return false;
+  if (['артикул','наименование','тип','ед изм','цена','товар','прайс','поставщик'].includes(n)) return false;
+  if (n.includes('товар поставщика') || n.includes('товар в системе')) return false;
+  return /[a-zа-яё]/i.test(raw);
+}
+
+function isProductHeader(value){
+  const n = normalize(value);
+  return n === 'наименование' || n === 'название' || n === 'номенклатура' || n === 'товар';
+}
+
+function isSupplierHeader(value){
+  const n = normalize(value);
+  // ВАЖНО: не ловим "Товар поставщика" как колонку поставщика.
+  return n === 'поставщик' || n === 'контрагент' || n === 'поставщик наименование';
+}
+
 function parsePriceWorkbook(wb, fileName){
   let found = 0;
+  let suppliersFound = 0;
+
   for (const sheetName of wb.SheetNames) {
     const sheet = wb.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json(sheet, { header:1, raw:true, defval:'' });
-    let headerIdx = -1, productCols = [], supplierCol = -1;
-    for (let i=0; i<Math.min(rows.length, 50); i++) {
-      const row = rows[i];
+
+    let headerIdx = -1;
+    let supplierCol = -1;
+    let productCols = [];
+
+    // Ищем настоящую строку заголовков. В твоем файле это строка:
+    // Артикул | Наименование | Тип | Поставщик | ... | Ед. изм. | Цена ... | Артикул | Наименование
+    for (let i=0; i<Math.min(rows.length, 80); i++) {
+      const row = rows[i] || [];
+      const exactSupplierCol = row.findIndex(cell => isSupplierHeader(cell));
+      const exactProductCols = [];
+
       row.forEach((cell, idx) => {
-        const c = normalize(cell);
-        if (['наименование','товар','номенклатура','продукт'].some(k => c.includes(k))) {
-          if (!productCols.includes(idx)) productCols.push(idx);
-          if (headerIdx < 0) headerIdx = i;
-        }
-        if (c.includes('поставщик')) { supplierCol=idx; if (headerIdx < 0) headerIdx=i; }
+        if (isProductHeader(cell)) exactProductCols.push(idx);
       });
-      if (supplierCol >= 0 && productCols.length) break;
+
+      if (exactSupplierCol >= 0 && exactProductCols.length) {
+        headerIdx = i;
+        supplierCol = exactSupplierCol;
+        productCols = exactProductCols;
+        break;
+      }
     }
-    const fallbackSupplier = sheetName.length > 2 && !normalize(sheetName).includes('лист') && !normalize(sheetName).includes('прайс') ? sheetName.trim() : fileName.replace(/\.(xlsx|xls)$/i,'').replace(/прайс|листы|поставщиков/gi,'').trim() || 'Поставщик';
-    const start = headerIdx >= 0 ? headerIdx + 1 : 0;
-    if (!productCols.length) productCols = [0,1,8];
+
+    // fallback для нестандартных прайсов: поставщик из имени листа/файла, товары из колонок с наименованием
+    const fallbackSupplier = (
+      sheetName.length > 2 &&
+      !normalize(sheetName).includes('лист') &&
+      !normalize(sheetName).includes('прайс')
+    ) ? sheetName.trim() : fileName.replace(/\.(xlsx|xls)$/i,'').replace(/прайс|листы|поставщиков/gi,'').trim() || 'Поставщик';
+
+    if (headerIdx < 0) {
+      // Если шапку не нашли, пробуем самый частый формат iiko: B = товар, D = поставщик, I = товар в системе.
+      headerIdx = 3;
+      supplierCol = 3;
+      productCols = [1, 8];
+    }
+
+    // Не используем колонку артикула как товар. В твоем прайсе наименования — B и I.
+    // Если нашли несколько "Наименование", оставляем их. Если нашли только одну — ок.
+    productCols = productCols.filter(c => c !== supplierCol);
+    if (!productCols.length) productCols = [1, 8];
+
+    const start = headerIdx + 1;
+
     for (const r of rows.slice(start)) {
-      const supplier = supplierCol >= 0 && r[supplierCol] ? String(r[supplierCol]).trim() : fallbackSupplier;
-      if (!supplier || normalize(supplier).includes('поставщик')) continue;
+      let supplier = supplierCol >= 0 ? String(r[supplierCol] ?? '').trim() : '';
+      if (!isValidSupplierName(supplier)) supplier = isValidSupplierName(fallbackSupplier) ? fallbackSupplier : '';
+      if (!supplier) continue;
+
+      if (!state.suppliers[supplier]) suppliersFound++;
       state.suppliers[supplier] = true;
       ensureSupplierSettings(supplier);
+
       for (const pcol of productCols) {
         const product = String(r[pcol] ?? '').trim();
         const n = normalize(product);
-        if (!product || product.length < 3 || n.includes('итого') || n.includes('наименование') || n.includes('артикул')) continue;
+        if (!product || product.length < 3) continue;
+        if (n.includes('итого') || n.includes('наименование') || n.includes('артикул') || n.includes('товар поставщика') || n.includes('товар в системе')) continue;
+        if (/^[\d\s.,\-/]+$/.test(product)) continue;
         state.supplierProducts[n] = supplier;
         found++;
       }
     }
   }
+
+  // Чистим старые ошибочные поставщики-цифры, если они ранее попали в localStorage.
+  for (const supplier of Object.keys(state.suppliers)) {
+    if (!isValidSupplierName(supplier) && supplier !== 'Прочее') {
+      delete state.suppliers[supplier];
+      delete state.supplierSettings[supplier];
+    }
+  }
+
   saveLocalSuppliers();
   return found;
 }
@@ -199,7 +266,7 @@ function orderText(){ const supplier=$('supplierSelect').value||'Все пост
 function downloadCSV(){ const supplier=$('supplierSelect').value||'Все поставщики'; const rows=orderRows(supplier); const header=['Наименование','Остаток','Заявка']; const csv=[header,...rows.map(r=>[r.product,`${num(r.stockEnd)} ${r.unit}`,`${num(r.recommendedOrder)} ${r.unit}`])].map(row=>row.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(';')).join('\n'); const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`zayavka_${supplier}.csv`; a.click(); URL.revokeObjectURL(url); }
 
 async function handleOSV(file){ const wb=await readWorkbook(file); state.stock=parseOSVWorkbook(wb); state.lastFile=file.name; recalcOrders(); saveLocalStock(); Object.keys(state.charts).forEach(k=>{try{state.charts[k].destroy()}catch{}}); state.charts={}; renderAll(); toast(`ОСВ загружена: ${state.stock.length} товаров`); }
-async function handlePrices(files){ let total=0; for(const file of files){ const wb=await readWorkbook(file); total+=parsePriceWorkbook(wb,file.name); } if(state.stock.length){ state.stock.forEach(r=>r.supplier=supplierFor(r.product)); recalcOrders(); saveLocalStock(); } renderAll(); toast(`Прайсы загружены: ${total} связей`); }
+async function handlePrices(files){ let total=0; for(const file of files){ const wb=await readWorkbook(file); total+=parsePriceWorkbook(wb,file.name); } if(state.stock.length){ state.stock.forEach(r=>r.supplier=supplierFor(r.product)); recalcOrders(); saveLocalStock(); } renderAll(); toast(`Прайсы загружены: ${total} связей. Поставщики обновлены.`); }
 
 function switchTab(tab){ document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab)); document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active', p.id===tab)); closeDrawer(); setTimeout(()=>{Object.values(state.charts).forEach(c=>{try{c.windowResizeHandler()}catch{}})},50); }
 function openDrawer(){ $('drawer').classList.add('open'); $('drawerBackdrop').classList.add('open'); }
