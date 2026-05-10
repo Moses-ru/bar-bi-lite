@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Бар BI Lite</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <button class="icon-btn" id="menuBtn" aria-label="Меню">☰</button>
+      <div class="brand">
+        <div class="brand-icon">⌁</div>
+        <div>
+          <h1>Бар BI</h1>
+          <span>Lite WebApp</span>
+        </div>
+      </div>
+      <button class="date-pill" id="resetBtn" title="Очистить данные">Сброс</button>
+    </header>
+
+    <main>
+      <section class="hero-card">
+        <div>
+          <p class="eyebrow">Локальный обработчик ОСВ</p>
+          <h2>Дашборд бара без сервера</h2>
+          <p>Файлы обрабатываются прямо на телефоне. Ничего не отправляется на backend.</p>
+        </div>
+      </section>
+
+      <section class="upload-grid">
+        <label class="upload-tile purple">
+          <input type="file" id="osvInput" accept=".xlsx,.xls" />
+          <span class="upload-icon">⇧</span>
+          <b>Загрузить ОСВ</b>
+          <small>.xlsx / .xls</small>
+        </label>
+        <label class="upload-tile blue">
+          <input type="file" id="priceInput" accept=".xlsx,.xls" multiple />
+          <span class="upload-icon">▤</span>
+          <b>Прайсы поставщиков</b>
+          <small>можно несколько</small>
+        </label>
+      </section>
+
+      <section class="status-card" id="fileStatus">
+        <b>Данные не загружены</b>
+        <span>Сначала загрузи ОСВ. Прайсы нужны для заявок по поставщикам.</span>
+      </section>
+
+      <nav class="tabs" id="tabs">
+        <button class="active" data-tab="dashboard">Дашборд</button>
+        <button data-tab="orders">Заявка</button>
+        <button data-tab="abc">ABC</button>
+        <button data-tab="tops">Топы</button>
+        <button data-tab="stops">Стопы</button>
+      </nav>
+
+      <section class="tab-panel active" id="dashboard">
+        <div class="kpi-grid">
+          <div class="kpi"><span>SKU</span><strong id="kpiSku">0</strong><small>товаров</small></div>
+          <div class="kpi"><span>Остатки</span><strong id="kpiStock">0 ₽</strong><small>сумма склада</small></div>
+          <div class="kpi danger"><span>Стопы</span><strong id="kpiStops">0</strong><small>остаток ≤ 0</small></div>
+          <div class="kpi warn"><span>Риск</span><strong id="kpiRisk">0</strong><small>мало запаса</small></div>
+          <div class="kpi warn"><span>Оверсток</span><strong id="kpiOver">0</strong><small>лишний запас</small></div>
+          <div class="kpi success"><span>К заказу</span><strong id="kpiOrder">0</strong><small>единиц</small></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <h3>AI-аналитик</h3>
+            <span>главное сейчас</span>
+          </div>
+          <div id="insights" class="insights"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <h3>Деньги в остатках</h3>
+            <span>по категориям</span>
+          </div>
+          <div id="categoryChart" class="chart"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <h3>Топ расхода</h3>
+            <span>по ОСВ</span>
+          </div>
+          <div id="salesChart" class="chart tall"></div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="orders">
+        <div class="card sticky-card">
+          <div class="card-title">
+            <h3>Заявка поставщику</h3>
+            <span>выбери поставщика</span>
+          </div>
+          <select id="supplierSelect"></select>
+          <div class="order-actions">
+            <button class="primary-btn" id="copyOrderBtn">Скопировать</button>
+            <button class="secondary-btn" id="downloadOrderBtn">CSV</button>
+          </div>
+        </div>
+        <div class="card">
+          <div id="orderList" class="list"></div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="abc">
+        <div class="card">
+          <div class="card-title"><h3>ABC-анализ</h3><span>по сумме расхода</span></div>
+          <div id="abcChart" class="chart"></div>
+          <div id="abcList" class="list"></div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="tops">
+        <div class="card">
+          <div class="card-title"><h3>Топ остатков</h3><span>деньги на складе</span></div>
+          <div id="topStockList" class="list"></div>
+        </div>
+        <div class="card">
+          <div class="card-title"><h3>Топ расхода</h3><span>количество</span></div>
+          <div id="topSalesList" class="list"></div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="stops">
+        <div class="card">
+          <div class="card-title"><h3>Стоп-лист</h3><span>остаток ≤ 0</span></div>
+          <div id="stopList" class="list"></div>
+        </div>
+        <div class="card">
+          <div class="card-title"><h3>Оверстоки</h3><span>замороженные деньги</span></div>
+          <div id="overList" class="list"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="bottom-nav">
+      <button class="active" data-tab="dashboard">⌂<span>Дашборд</span></button>
+      <button data-tab="orders">🛒<span>Заявка</span></button>
+      <button data-tab="abc">◔<span>ABC</span></button>
+      <button data-tab="tops">▥<span>Топы</span></button>
+      <button data-tab="stops">⚠<span>Стопы</span></button>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
