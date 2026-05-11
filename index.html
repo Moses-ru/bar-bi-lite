@@ -1,12 +1,207 @@
 <!doctype html>
 <html lang="ru">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Prime Inventory</title>
-    <script type="module" crossorigin src="./assets/index-arGuBPaP.js"></script>
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Бар BI Lite</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#07111f" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+</head>
+<body>
+  <div class="drawer-backdrop" id="drawerBackdrop"></div>
+  <aside class="drawer" id="drawer">
+    <div class="drawer-head">
+      <div>
+        <b>Меню</b>
+        <span>Дополнительные разделы</span>
+      </div>
+      <button class="mini-btn" id="closeMenuBtn">×</button>
+    </div>
+    <button class="drawer-link" data-tab="supplierSettings">Настройка поставщиков</button>
+    <button class="drawer-link" data-tab="tops">Топы</button>
+    <button class="drawer-link" data-tab="stops">Стопы</button>
+    <button class="drawer-link" data-tab="analytics">Аналитика</button>
+    <button class="drawer-link" data-tab="history">История ОСВ</button>
+    <button class="drawer-link" id="resetSuppliersBtn">Очистить поставщиков</button>
+    <button class="drawer-link danger-link" id="resetBtn">Сбросить все данные</button>
+    <div class="drawer-note">ОСВ и прайсы обрабатываются локально в браузере. На сервер ничего не отправляется.</div>
+  </aside>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <button class="icon-btn" id="menuBtn" aria-label="Меню">☰</button>
+      <div class="brand">
+        <div class="brand-icon">BI</div>
+        <div>
+          <h1>Barmanager_UG</h1>
+          <span>мобильная закупка бара</span>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="date-pill" id="datePill">Сегодня</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero-card">
+        <p class="eyebrow">Локальный обработчик ОСВ</p>
+        <h2>ОСВ → заявка за минуту</h2>
+        <p>Файлы обрабатываются на телефоне. Поставщиков, ручные привязки, историю и редактор заявок сохраняем в браузере.</p>
+      </section>
+
+      <section class="upload-grid">
+        <label class="upload-tile purple">
+          <input type="file" id="osvInput" accept=".xlsx,.xls" />
+          <span class="upload-icon">⇧</span>
+          <b>Загрузить ОСВ</b>
+          <small>.xlsx / .xls</small>
+        </label>
+        <label class="upload-tile blue">
+          <input type="file" id="priceInput" accept=".xlsx,.xls" multiple />
+          <span class="upload-icon">▤</span>
+          <b>Загрузить прайсы</b>
+          <small>для поставщиков</small>
+        </label>
+      </section>
+
+      <section class="status-card" id="fileStatus">
+        <b>Данные не загружены</b>
+        <span>Сначала загрузи ОСВ. Прайсы нужны для заявок по поставщикам.</span>
+      </section>
+
+      <section class="tab-panel active" id="dashboard">
+        <div class="kpi-grid">
+          <div class="kpi"><span>SKU</span><strong id="kpiSku">0</strong><small>товаров</small></div>
+          <div class="kpi"><span>Остатки</span><strong id="kpiStock">0 ₽</strong><small>сумма склада</small></div>
+          <div class="kpi danger"><span>Стопы</span><strong id="kpiStops">0</strong><small>остаток ≤ 0</small></div>
+          <div class="kpi warn"><span>Риск</span><strong id="kpiRisk">0</strong><small>мало запаса</small></div>
+          <div class="kpi warn"><span>Оверсток</span><strong id="kpiOver">0</strong><small>лишний запас</small></div>
+          <div class="kpi success"><span>К заказу</span><strong id="kpiOrder">0</strong><small>единиц</small></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <h3>AI-аналитик</h3>
+            <span>главное сейчас</span>
+          </div>
+          <div id="insights" class="insights"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <h3>Деньги в остатках</h3>
+            <span>по категориям</span>
+          </div>
+          <div id="categoryChart" class="chart"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <h3>Топ расхода</h3>
+            <span>по ОСВ</span>
+          </div>
+          <div id="salesChart" class="chart tall"></div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="orders">
+        <div class="card sticky-card">
+          <div class="card-title">
+            <h3>Заявка</h3>
+            <span>по поставщику</span>
+          </div>
+          <select id="supplierSelect"></select>
+          <div class="supplier-hint" id="supplierHint"></div>
+          <div class="supplier-hint strong">В заявке можно вручную поменять поставщика товара и количество. Экспорт: только Наименование | Количество.</div>
+          <div class="order-actions">
+            <button class="primary-btn" id="copyOrderBtn">Скопировать</button>
+            <button class="secondary-btn" id="downloadOrderBtn">CSV</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="table-head three"><span>Наименование</span><span>Остаток</span><span>Заявка</span></div>
+          <div id="orderList" class="list order-table"></div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="abc">
+        <div class="card">
+          <div class="card-title"><h3>ABC-анализ</h3><span>A / B / C</span></div>
+          <div id="abcChart" class="chart compact-chart"></div>
+          <div class="abc-filter" id="abcFilter">
+            <button class="active" data-abc="ALL">Все</button>
+            <button data-abc="A">A</button>
+            <button data-abc="B">B</button>
+            <button data-abc="C">C</button>
+          </div>
+          <div id="abcList" class="list"></div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="supplierSettings">
+        <div class="card">
+          <div class="card-title"><h3>Настройка поставщиков</h3><span>сроки и запас</span></div>
+          <div class="settings-note">Для каждого поставщика можно задать срок доставки, на сколько дней закупаемся и страховой запас. Формула: расход/день × (доставка + закуп + запас) − остаток.</div>
+          <div id="supplierSettingsList" class="settings-list"></div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="tops">
+        <div class="card">
+          <div class="card-title"><h3>Топ остатков</h3><span>деньги на складе</span></div>
+          <div id="topStockList" class="list"></div>
+        </div>
+        <div class="card">
+          <div class="card-title"><h3>Топ расхода</h3><span>количество</span></div>
+          <div id="topSalesList" class="list"></div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="stops">
+        <div class="card">
+          <div class="card-title"><h3>Стоп-лист</h3><span>остаток ≤ 0</span></div>
+          <div id="stopList" class="list"></div>
+        </div>
+        <div class="card">
+          <div class="card-title"><h3>Оверстоки</h3><span>замороженные деньги</span></div>
+          <div id="overList" class="list"></div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="analytics">
+        <div class="card">
+          <div class="card-title"><h3>Аналитика</h3><span>по ОСВ</span></div>
+          <div class="analytics-grid">
+            <div class="metric"><span>Общая себестоимость продаж</span><b id="metricSalesCost">0 ₽</b><small>из колонки «Продажи · сумма с/н» в ОСВ</small></div>
+            <div class="metric"><span>Списания</span><b id="metricWriteoff">0 ₽</b><small>если есть в ОСВ</small></div>
+            <div class="metric"><span>Заморожено</span><b id="metricFrozen">0 ₽</b><small>в оверстоках</small></div>
+            <div class="metric"><span>Без поставщика</span><b id="metricNoSupplier">0</b><small>попали в «Прочее»</small></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="history">
+        <div class="card">
+          <div class="card-title"><h3>История ОСВ</h3><span>последние загрузки</span></div>
+          <div class="settings-note">Хранятся не Excel-файлы, а обработанные данные и сводка в localStorage этого браузера.</div>
+          <div id="historyList" class="list"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="bottom-nav">
+      <button class="active" data-tab="dashboard">⌂<span>Дашборд</span></button>
+      <button data-tab="orders">▣<span>Заявка</span></button>
+      <button data-tab="abc">◔<span>ABC</span></button>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="app.js"></script>
+  <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").catch(()=>{}); }</script>
+</body>
 </html>
