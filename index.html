@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Бар BI Lite</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#07111f" />
   <link rel="stylesheet" href="style.css" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -23,6 +25,7 @@
     <button class="drawer-link" data-tab="tops">Топы</button>
     <button class="drawer-link" data-tab="stops">Стопы</button>
     <button class="drawer-link" data-tab="analytics">Аналитика</button>
+    <button class="drawer-link" data-tab="history">История ОСВ</button>
     <button class="drawer-link" id="resetSuppliersBtn">Очистить поставщиков</button>
     <button class="drawer-link danger-link" id="resetBtn">Сбросить все данные</button>
     <div class="drawer-note">ОСВ и прайсы обрабатываются локально в браузере. На сервер ничего не отправляется.</div>
@@ -32,20 +35,22 @@
     <header class="topbar">
       <button class="icon-btn" id="menuBtn" aria-label="Меню">☰</button>
       <div class="brand">
-        <div class="brand-icon">◌</div>
+        <div class="brand-icon">BI</div>
         <div>
-          <h1>Бар BI</h1>
-          <span>Lite WebApp</span>
+          <h1>Barmanager_UG</h1>
+          <span>мобильная закупка бара</span>
         </div>
       </div>
-      <button class="date-pill" id="datePill">Сегодня</button>
+      <div class="top-actions">
+        <button class="date-pill" id="datePill">Сегодня</button>
+      </div>
     </header>
 
     <main>
       <section class="hero-card">
         <p class="eyebrow">Локальный обработчик ОСВ</p>
-        <h2>Дашборд бара без сервера</h2>
-        <p>Загрузи ОСВ и прайсы — сайт сам посчитает остатки, стопы, ABC и заявку по поставщикам.</p>
+        <h2>ОСВ → заявка за минуту</h2>
+        <p>Файлы обрабатываются на телефоне. Поставщиков, ручные привязки, историю и редактор заявок сохраняем в браузере.</p>
       </section>
 
       <section class="upload-grid">
@@ -111,6 +116,7 @@
           </div>
           <select id="supplierSelect"></select>
           <div class="supplier-hint" id="supplierHint"></div>
+          <div class="supplier-hint strong">В заявке можно вручную поменять поставщика товара и количество. Экспорт: только Наименование | Количество.</div>
           <div class="order-actions">
             <button class="primary-btn" id="copyOrderBtn">Скопировать</button>
             <button class="secondary-btn" id="downloadOrderBtn">CSV</button>
@@ -177,6 +183,14 @@
           </div>
         </div>
       </section>
+
+      <section class="tab-panel" id="history">
+        <div class="card">
+          <div class="card-title"><h3>История ОСВ</h3><span>последние загрузки</span></div>
+          <div class="settings-note">Хранятся не Excel-файлы, а обработанные данные и сводка в localStorage этого браузера.</div>
+          <div id="historyList" class="list"></div>
+        </div>
+      </section>
     </main>
 
     <footer class="bottom-nav">
@@ -188,5 +202,6 @@
 
   <div class="toast" id="toast"></div>
   <script src="app.js"></script>
+  <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").catch(()=>{}); }</script>
 </body>
 </html>

@@ -1,0 +1,11 @@
+{
+  "name": "Бар BI Lite",
+  "short_name": "Бар BI",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#07111f",
+  "theme_color": "#07111f",
+  "orientation": "portrait",
+  "lang": "ru",
+  "description": "Локальный мобильный обработчик ОСВ и заявок бара"
+}
